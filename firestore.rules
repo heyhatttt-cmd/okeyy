@@ -1,0 +1,246 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Shared helper primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // --- Validation Helpers ---
+
+    function isValidPlayer(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 40 &&
+             (!('avatarId' in data) || (data.avatarId is string && data.avatarId.size() <= 40)) &&
+             data.chips is int && data.chips >= 0 && data.chips <= 1000000000 &&
+             data.level is int && data.level >= 1 && data.level <= 999 &&
+             data.vipLevel is int && data.vipLevel >= 0 && data.vipLevel <= 20 &&
+             data.onlineStatus in ['online', 'playing', 'offline'] &&
+             data.currentGame is string && data.currentGame.size() >= 1 && data.currentGame.size() <= 40 &&
+             (!('lastDailyClaimAt' in data) || isValidTimestamp(data.lastDailyClaimAt)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidFriendRequest(data) {
+      return data.fromUid is string && data.fromUid.size() >= 1 && data.fromUid.size() <= 128 &&
+             data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 40 &&
+             data.toUid is string && data.toUid.size() >= 1 && data.toUid.size() <= 128 &&
+             data.toName is string && data.toName.size() >= 1 && data.toName.size() <= 40 &&
+             data.fromUid != data.toUid &&
+             data.status in ['pending', 'accepted', 'declined'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidChatMessage(data) {
+      return data.roomId is string && data.roomId.size() >= 1 && data.roomId.size() <= 64 &&
+             data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40 &&
+             data.senderVip is int && data.senderVip >= 0 && data.senderVip <= 20 &&
+             data.senderLevel is int && data.senderLevel >= 1 && data.senderLevel <= 999 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 300 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidGameRoom(data) {
+      return data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+             data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 40 &&
+             data.gameType in ['101 OKEY', 'BATAK', 'TAVLA', 'DÜZ OKEY'] &&
+             data.tableName is string && data.tableName.size() >= 1 && data.tableName.size() <= 50 &&
+             data.minBet is int && data.minBet >= 50 && data.minBet <= 1000000 &&
+             data.maxPlayers is int && (data.maxPlayers == 2 || data.maxPlayers == 4) &&
+             data.playerUids is list && data.playerUids.size() <= 4 &&
+             (data.playerUids.size() == 0 || data.playerUids[0] is string) &&
+             data.playerNames is list && data.playerNames.size() <= 4 &&
+             (data.playerNames.size() == 0 || data.playerNames[0] is string) &&
+             data.playerUids.size() == data.playerNames.size() &&
+             data.status in ['waiting', 'playing', 'finished'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidGift(data) {
+      return data.fromUid is string && data.fromUid.size() >= 1 && data.fromUid.size() <= 128 &&
+             data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 40 &&
+             data.toUid is string && data.toUid.size() >= 1 && data.toUid.size() <= 128 &&
+             data.amount is int && data.amount >= 10 && data.amount <= 5000 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 120 &&
+             data.claimed is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- Collection Rules ---
+
+    // Public online player directory (no PII stored)
+    match /players/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn() && existing().onlineStatus in ['online', 'playing', 'offline'];
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'chips', 'level', 'vipLevel', 'onlineStatus', 'currentGame', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'avatarId', 'chips', 'level', 'vipLevel', 'onlineStatus', 'currentGame', 'lastDailyClaimAt', 'createdAt', 'updatedAt']) &&
+                       isValidPlayer(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidPlayer(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarId', 'chips', 'level', 'vipLevel', 'onlineStatus', 'currentGame', 'lastDailyClaimAt', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // Friend requests & accepted friendships
+    match /friend_requests/{requestId} {
+      allow get: if isSignedIn() &&
+                    isValidId(requestId) &&
+                    (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+
+      allow list: if isSignedIn() &&
+                     (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().fromUid == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       incoming().keys().hasAll(['fromUid', 'fromName', 'toUid', 'toName', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['fromUid', 'fromName', 'toUid', 'toName', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidFriendRequest(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       isValidFriendRequest(incoming()) &&
+                       existing().status == 'pending' &&
+                       request.auth.uid == existing().toUid &&
+                       incoming().fromUid == existing().fromUid &&
+                       incoming().fromName == existing().fromName &&
+                       incoming().toUid == existing().toUid &&
+                       incoming().toName == existing().toName &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status in ['accepted', 'declined'] &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+    }
+
+    // Real-time Lobby & Room Chat Messages
+    match /chat_messages/{messageId} {
+      allow get: if isSignedIn() && isValidId(messageId);
+      allow list: if isSignedIn() && existing().roomId is string && existing().roomId.size() <= 64;
+
+      allow create: if isSignedIn() &&
+                       isValidId(messageId) &&
+                       incoming().senderUid == request.auth.uid &&
+                       incoming().keys().hasAll(['roomId', 'senderUid', 'senderName', 'senderVip', 'senderLevel', 'text', 'createdAt']) &&
+                       incoming().keys().hasOnly(['roomId', 'senderUid', 'senderName', 'senderVip', 'senderLevel', 'text', 'createdAt']) &&
+                       isValidChatMessage(incoming());
+
+      allow update: if false;
+
+      allow delete: if isSignedIn() &&
+                       isValidId(messageId) &&
+                       existing().senderUid == request.auth.uid;
+    }
+
+    // Multiplayer Game Tables
+    match /game_rooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId);
+      allow list: if isSignedIn() && existing().status in ['waiting', 'playing'];
+
+      allow create: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       incoming().hostUid == request.auth.uid &&
+                       request.auth.uid in incoming().playerUids &&
+                       incoming().status == 'waiting' &&
+                       incoming().keys().hasAll(['hostUid', 'hostName', 'gameType', 'tableName', 'minBet', 'maxPlayers', 'playerUids', 'playerNames', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['hostUid', 'hostName', 'gameType', 'tableName', 'minBet', 'maxPlayers', 'playerUids', 'playerNames', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidGameRoom(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidGameRoom(incoming()) &&
+                       existing().status != 'finished' &&
+                       incoming().hostUid == existing().hostUid &&
+                       incoming().hostName == existing().hostName &&
+                       incoming().gameType == existing().gameType &&
+                       incoming().tableName == existing().tableName &&
+                       incoming().minBet == existing().minBet &&
+                       incoming().maxPlayers == existing().maxPlayers &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         (request.auth.uid == existing().hostUid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['playerUids', 'playerNames', 'status', 'updatedAt'])) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['playerUids', 'playerNames', 'updatedAt']) &&
+                          incoming().status == existing().status)
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       existing().hostUid == request.auth.uid;
+    }
+
+    // Per-user incoming chip gifts
+    match /users/{userId}/gifts/{giftId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(giftId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidId(giftId) &&
+                       incoming().fromUid == request.auth.uid &&
+                       incoming().toUid == userId &&
+                       incoming().claimed == false &&
+                       incoming().keys().hasAll(['fromUid', 'fromName', 'toUid', 'amount', 'message', 'claimed', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['fromUid', 'fromName', 'toUid', 'amount', 'message', 'claimed', 'createdAt', 'updatedAt']) &&
+                       isValidGift(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidId(giftId) &&
+                       request.auth.uid == userId &&
+                       isValidGift(incoming()) &&
+                       existing().claimed == false &&
+                       incoming().fromUid == existing().fromUid &&
+                       incoming().fromName == existing().fromName &&
+                       incoming().toUid == existing().toUid &&
+                       incoming().amount == existing().amount &&
+                       incoming().message == existing().message &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().claimed == true &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['claimed', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && isValidId(giftId) && request.auth.uid == userId;
+    }
+  }
+}

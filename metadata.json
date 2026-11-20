@@ -1,0 +1,6 @@
+{
+  "name": "Zirve Okey",
+  "description": "Zirve Okey - Çevrimiçi Okey, 101 Okey, Batak, Tavla ve Slot Oyunları lobisi, arkadaş ekleme ve gerçek zamanlı sohbet uygulaması.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

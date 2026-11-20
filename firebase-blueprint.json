@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "Public online player profile and chip balance in Zirve Okey (no PII stored).",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the player." },
+        "displayName": { "type": "string", "description": "Visible player nickname." },
+        "avatarId": { "type": "string", "description": "Selected avatar identifier." },
+        "chips": { "type": "integer", "description": "Current virtual chip balance." },
+        "level": { "type": "integer", "description": "Player experience level." },
+        "vipLevel": { "type": "integer", "description": "VIP tier level." },
+        "onlineStatus": { "type": "string", "enum": ["online", "playing", "offline"] },
+        "currentGame": { "type": "string", "description": "Current lobby or game room name." },
+        "lastDailyClaimAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last daily reward claim." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp when player profile was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update." }
+      },
+      "required": ["userId", "displayName", "chips", "level", "vipLevel", "onlineStatus", "currentGame", "createdAt", "updatedAt"]
+    },
+    "FriendRequest": {
+      "title": "FriendRequest",
+      "description": "Friend invitation and accepted friendship link between two players.",
+      "type": "object",
+      "properties": {
+        "fromUid": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toUid": { "type": "string" },
+        "toName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromUid", "fromName", "toUid", "toName", "status", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time lobby or game room chat message.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderVip": { "type": "integer" },
+        "senderLevel": { "type": "integer" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "senderUid", "senderName", "senderVip", "senderLevel", "text", "createdAt"]
+    },
+    "GameRoom": {
+      "title": "GameRoom",
+      "description": "Multiplayer table room for 101 Okey, Batak, Tavla, or Duz Okey.",
+      "type": "object",
+      "properties": {
+        "hostUid": { "type": "string" },
+        "hostName": { "type": "string" },
+        "gameType": { "type": "string", "enum": ["101 OKEY", "BATAK", "TAVLA", "DÜZ OKEY"] },
+        "tableName": { "type": "string" },
+        "minBet": { "type": "integer" },
+        "maxPlayers": { "type": "integer" },
+        "playerUids": { "type": "array" },
+        "playerNames": { "type": "array" },
+        "status": { "type": "string", "enum": ["waiting", "playing", "finished"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hostUid", "hostName", "gameType", "tableName", "minBet", "maxPlayers", "playerUids", "playerNames", "status", "createdAt", "updatedAt"]
+    },
+    "GiftItem": {
+      "title": "GiftItem",
+      "description": "Chip gift sent to a user's inbox.",
+      "type": "object",
+      "properties": {
+        "fromUid": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toUid": { "type": "string" },
+        "amount": { "type": "integer" },
+        "message": { "type": "string" },
+        "claimed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromUid", "fromName", "toUid", "amount", "message", "claimed", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/players/{userId}": {
+      "schema": { "$ref": "#/entities/Player" },
+      "description": "Public online player profiles, chips, levels, and status."
+    },
+    "/friend_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/FriendRequest" },
+      "description": "Friend invitations and accepted friendships."
+    },
+    "/chat_messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Lobby and room real-time chat messages."
+    },
+    "/game_rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/GameRoom" },
+      "description": "Active multiplayer game tables."
+    },
+    "/users/{userId}/gifts/{giftId}": {
+      "schema": { "$ref": "#/entities/GiftItem" },
+      "description": "Per-user incoming chip gifts."
+    }
+  }
+}
